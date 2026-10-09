@@ -62,7 +62,7 @@ def extract_questions_from_image(image_path: str, year: int) -> ExtractedPaper:
     # We enforce structured JSON output using Pydantic schemas so the app doesn't break
     ai_client = client or genai.Client()
     response = ai_client.models.generate_content(
-        model='gemini-3.8-flash',
+        model='gemini-3.5-flash',
         contents=[prompt], # In reality, you'd pass [sample_file, prompt]
         config={
             'response_mime_type': 'application/json',
@@ -99,7 +99,7 @@ def map_topics(paper: ExtractedPaper, syllabus_topics: List[str]) -> ExtractedPa
         """
         
         response = ai_client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-3.5-flash',
             contents=prompt
         )
         

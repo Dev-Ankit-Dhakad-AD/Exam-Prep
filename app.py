@@ -122,25 +122,29 @@ Return structured JSON."""
 
     image_part = {"inline_data": {"data": base64.b64encode(image_bytes).decode(), "mime_type": mime}}
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=[image_part, prompt],
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": ExtractedPaper,
-            }
-        )
-    except Exception as err:
-        print(f"[WARN] gemini-3.8-flash failed ({err}), trying gemini-flash-latest...")
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=[image_part, prompt],
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": ExtractedPaper,
-            }
-        )
+    models_to_try = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+    response = None
+    last_err = None
+
+    for m in models_to_try:
+        try:
+            print(f"[AI] Trying model: {m}...")
+            response = client.models.generate_content(
+                model=m,
+                contents=[image_part, prompt],
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": ExtractedPaper,
+                }
+            )
+            print(f"[AI] Successfully extracted using {m}!")
+            break
+        except Exception as err:
+            print(f"[WARN] {m} failed ({err}), falling back to next model...")
+            last_err = err
+
+    if not response:
+        raise RuntimeError(f"All AI models are currently busy or unavailable. Last error: {last_err}")
 
     paper = ExtractedPaper.model_validate_json(response.text)
     paper.year = year
