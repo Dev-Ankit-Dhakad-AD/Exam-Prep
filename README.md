@@ -6,6 +6,17 @@ Designed for university students, educators, and curriculum developers to pinpoi
 
 ---
 
+## 💡 Built with "Vibe Coding" & Core Logic Building
+
+> *"Built through modern **Vibe Coding** — blending foundational programming knowledge, algorithmic problem-solving, and AI-accelerated development."*
+
+This entire platform was engineered using the **Vibe Coding** paradigm. Rather than traditional boilerplate-heavy coding, the project was brought to life by:
+- **Foundational Programming Knowledge**: Applying core CS and programming fundamentals — REST API architecture, DOM manipulation, asynchronous state management, and file persistence.
+- **Algorithmic Logic Building**: Designing the core matching engines, academic keyword heuristics, priority weighting formulas, and data normalization pipelines from first principles.
+- **AI-Accelerated Iteration (Vibe Coding)**: Collaborating with AI in real-time flow to rapidly ideate, prototype, debug edge cases, implement mobile responsiveness, and ship production-ready features.
+
+---
+
 ## 🌟 Key Features
 
 ### 1. 👁️ Multimodal Question Paper Extraction
@@ -138,6 +149,7 @@ http://localhost:5000
 ---
 
 ## 👨‍💻 Developer & Credits
+- **Development Philosophy**: Built using **Vibe Coding** — powered by foundational programming knowledge, creative logic building, and AI pair-programming.
 - **Institute**: Institute of Engineering & Technology, Devi Ahilya Vishwavidyalaya (IET DAVV), Indore
 - **Department**: Electronics & Instrumentation Engineering (E&I)
 - **License**: MIT
