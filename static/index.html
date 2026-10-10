@@ -50,7 +50,7 @@
         <h1>Automated Exam Paper &amp; <span class="blue-highlight">PYQ Analytics.</span></h1>
         <p>Extract questions with Gemini Vision, map mark weightage to syllabus topics, and prioritize high-yield exam preparation.</p>
         
-        <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+        <div class="workspace-pills-row">
           <span class="meta-pill" style="display: inline-flex; align-items: center; gap: 6px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             Automated Vision Extraction
@@ -163,7 +163,7 @@
 
           <div id="file-preview"></div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px;">
+          <div class="form-row-2col">
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label" for="year-input">Exam Year</label>
               <input type="number" id="year-input" class="text-input" value="2024" min="2000" max="2099" />
@@ -255,19 +255,27 @@
             </div>
           </div>
           <div class="panel-body" style="padding: 0;">
-            <table class="priority-table">
-              <thead>
-                <tr>
-                  <th style="width: 50px;">Rank</th>
-                  <th>Topic Name</th>
-                  <th>Marks Weightage</th>
-                  <th>Frequency</th>
-                  <th>Question Types</th>
-                  <th style="text-align: right;">Priority Score</th>
-                </tr>
-              </thead>
-              <tbody id="priority-table-body"></tbody>
-            </table>
+            <div class="table-scroll-hint">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+              <span>Swipe horizontally to view full table</span>
+            </div>
+            <div class="table-responsive">
+              <table class="priority-table">
+                <thead>
+                  <tr>
+                    <th style="width: 50px;">Rank</th>
+                    <th>Topic Name</th>
+                    <th>Marks Weightage</th>
+                    <th>Frequency</th>
+                    <th>Question Types</th>
+                    <th style="text-align: right;">Priority Score</th>
+                  </tr>
+                </thead>
+                <tbody id="priority-table-body"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
