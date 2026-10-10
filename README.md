@@ -139,5 +139,5 @@ http://localhost:5000
 
 ## 👨‍💻 Developer & Credits
 - **Institute**: Institute of Engineering & Technology, Devi Ahilya Vishwavidyalaya (IET DAVV), Indore
-- **Department**: Information Technology
+- **Department**: Electronics & Instrumentation Engineering (E&I)
 - **License**: MIT
