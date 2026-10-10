@@ -245,7 +245,11 @@ async function uploadPaper() {
     }
 
     const questionCount = result.paper?.questions?.length || 0;
-    toast(`Paper (${year}) processed successfully — ${questionCount} questions extracted.`, 'success');
+    if (questionCount === 0) {
+      toast(`Paper processed, but no questions could be recognized. Please upload a clearer photo.`, 'warning');
+    } else {
+      toast(`Paper (${year}) processed successfully — ${questionCount} questions extracted.`, 'success');
+    }
 
     clearSelectedFile();
     await refreshAnalysis();

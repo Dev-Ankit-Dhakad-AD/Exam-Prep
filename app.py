@@ -34,13 +34,13 @@ except Exception as e:
 if AI_AVAILABLE:
     class Question(BaseModel):
         text: str
-        marks: int
-        question_type: str          # theory | numerical | derivation
+        marks: int = 6
+        question_type: str = "theory"          # theory | numerical | derivation
         topic: Optional[str] = None
 
     class ExtractedPaper(BaseModel):
-        year: int
-        questions: List[Question]
+        year: int = 2024
+        questions: List[Question] = []
 
 # ── Flask App ─────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder="static")
@@ -269,62 +269,95 @@ MOCK_QUESTIONS = [
     {"text": "Numerical on Maxwell's equations.",     "marks": 6,  "question_type": "numerical",   "topic": "Electromagnetism"},
 ]
 
+def prepare_image_bytes(image_path, max_dim=1920):
+    """Optimize image size and format using Pillow for ultra-fast upload & OCR."""
+    try:
+        from PIL import Image
+        import io
+        with Image.open(image_path) as img:
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            w, h = img.size
+            if max(w, h) > max_dim:
+                scale = max_dim / max(w, h)
+                new_size = (int(w * scale), int(h * scale))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=88, optimize=True)
+            return buf.getvalue(), "image/jpeg"
+    except Exception as e:
+        print(f"[IMG WARN] Image optimization fallback: {e}")
+        with open(image_path, "rb") as f:
+            b = f.read()
+        ext = os.path.splitext(image_path)[1].lower()
+        mime = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
+        return b, mime
+
 def ai_extract(image_path, year, syllabus):
-    """Use Gemini to extract questions from uploaded image."""
+    """Use Gemini to extract questions from uploaded image quickly and reliably."""
     if not AI_AVAILABLE or not client:
         raise RuntimeError("AI client not available")
 
-    with open(image_path, "rb") as f:
-        image_bytes = f.read()
-
-    ext = os.path.splitext(image_path)[1].lower()
-    mime = "image/jpeg" if ext in [".jpg", ".jpeg"] else \
-           "image/png"  if ext == ".png" else \
-           "application/pdf"
+    image_bytes, mime = prepare_image_bytes(image_path)
 
     syllabus_str = ", ".join(syllabus) if syllabus else "Auto-detect topics"
 
-    prompt = f"""Analyze this exam paper image carefully.
+    prompt = f"""You are an expert academic exam paper parser and question extractor.
+Examine this exam paper image carefully and extract EVERY SINGLE question.
 
-Syllabus topics available: [{syllabus_str}]
+EXTRACTION INSTRUCTIONS:
+1. Extract all questions, including numbered questions (Q.1, Q.2, etc.) and sub-questions ((a), (b), (c), etc.).
+2. Include the complete text of each question with all formulas, symbols, and mathematical expressions.
+3. If marks are written (e.g. [6], 6M, 6 marks, or in the right margin), extract that integer. If not specified, default to 5 or 6.
+4. Classify question_type as one of: 'theory', 'numerical', or 'derivation'.
+5. Syllabus topics available: [{syllabus_str}]. Assign topic if it directly matches, otherwise assign 'General / Other'.
+6. CRITICAL: You MUST extract every question visible on the paper. Do NOT return an empty questions list if there are questions on the paper.
 
-For EACH question found:
-1. Extract the full question text
-2. Determine marks allocated  
-3. Classify question type as exactly one of: 'theory', 'numerical', 'derivation'
-4. Assign it to the best matching syllabus topic from the list provided
-
-Return structured JSON."""
+Return structured JSON according to the schema."""
 
     image_part = {"inline_data": {"data": base64.b64encode(image_bytes).decode(), "mime_type": mime}}
 
-    models_to_try = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
-    response = None
+    # Fast models first, with thinking_budget=0 for 3.8 to eliminate 40+ second delay
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]
     last_err = None
+    extracted_questions = []
 
     for m in models_to_try:
         try:
-            print(f"[AI] Trying model: {m}...")
-            response = client.models.generate_content(
+            print(f"[AI] Extracting with model: {m}...")
+            cfg = {
+                "response_mime_type": "application/json",
+                "response_schema": ExtractedPaper,
+            }
+            if "3.8" in m:
+                cfg["thinking_config"] = {"thinking_budget": 0}
+
+            resp = client.models.generate_content(
                 model=m,
                 contents=[image_part, prompt],
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": ExtractedPaper,
-                }
+                config=cfg
             )
-            print(f"[AI] Successfully extracted using {m}!")
-            break
+            paper = ExtractedPaper.model_validate_json(resp.text)
+            if paper.questions and len(paper.questions) > 0:
+                print(f"[AI] Successfully extracted {len(paper.questions)} questions using {m}!")
+                extracted_questions = paper.questions
+                break
+            else:
+                print(f"[AI WARN] {m} returned 0 questions, attempting next model...")
         except Exception as err:
             print(f"[WARN] {m} failed ({err}), falling back to next model...")
             last_err = err
 
-    if not response:
-        raise RuntimeError(f"All AI models are currently busy or unavailable. Last error: {last_err}")
+    if not extracted_questions:
+        if last_err:
+            raise RuntimeError(f"Could not extract questions from paper: {last_err}")
+        else:
+            raise RuntimeError("No questions could be recognized on the uploaded image. Please ensure the paper is clear, well-lit, and legible.")
 
-    paper = ExtractedPaper.model_validate_json(response.text)
-    paper.year = year
-    result = {"year": year, "questions": [q.model_dump() for q in paper.questions]}
+    result = {
+        "year": year,
+        "questions": [q.model_dump() for q in extracted_questions]
+    }
     return result
 
 # ── Routes ────────────────────────────────────────────────────────────────────
