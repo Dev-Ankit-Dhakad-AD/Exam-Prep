@@ -49,83 +49,178 @@ CORS(app)
 UPLOAD_FOLDER = "/tmp/uploads" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# In-memory store (per session; replace with DB for production)
+# Persistent store file
+DATA_FILE = os.path.join(os.path.dirname(__file__), "store.json")
+
 store = {
     "papers": [],       # List[ExtractedPaper-like dicts]
     "syllabus": []
 }
 
+def load_store():
+    global store
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                store["papers"] = loaded.get("papers", [])
+                store["syllabus"] = loaded.get("syllabus", [])
+                print(f"[STORE] Loaded {len(store['papers'])} paper(s) and {len(store['syllabus'])} topic(s) from {DATA_FILE}")
+        except Exception as e:
+            print(f"[STORE WARN] Could not load store.json: {e}")
+
+def save_store():
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(store, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[STORE WARN] Could not save store.json: {e}")
+
+# Load persistent store at startup
+load_store()
+
 import re
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def match_topic_for_question(text, syllabus_topics, current_topic=None):
+def match_topic_for_question(text, syllabus_topics):
     if not syllabus_topics:
-        return current_topic or "General"
-
-    # 1. Exact or case-insensitive match with existing topic if still in syllabus
-    for t in syllabus_topics:
-        if current_topic and current_topic.strip().lower() == t.strip().lower():
-            return t
+        return "General / Other"
 
     text_lower = (text or "").lower()
 
-    # 2. Substring match of full topic name in question text (longest match first)
-    sorted_topics = sorted(syllabus_topics, key=lambda x: len(x), reverse=True)
-    for t in sorted_topics:
-        t_clean = t.strip().lower()
-        if len(t_clean) >= 3 and t_clean in text_lower:
-            return t
-
-    # 3. Token / keyword overlap
-    q_tokens = set(re.findall(r'\b[a-zA-Z]{3,}\b', text_lower))
-    best_topic = None
-    best_overlap = 0
-    for t in syllabus_topics:
-        t_tokens = set(re.findall(r'\b[a-zA-Z]{3,}\b', t.lower()))
-        overlap = len(q_tokens.intersection(t_tokens))
-        if overlap > best_overlap:
-            best_overlap = overlap
-            best_topic = t
-    if best_topic and best_overlap > 0:
-        return best_topic
-
-    # 4. Domain synonyms for engineering / sciences
-    topic_synonyms = {
+    # Domain keywords and concepts mapped to common engineering topics
+    topic_rules = {
+        "kmap": ["k-map", "kmap", "karnaugh", "minimal sop", "minimal pos", "5-variable k-map", "min terms", "minterm", "maxterm", "sop expression", "pos expression"],
+        "k-map": ["k-map", "kmap", "karnaugh", "minimal sop", "minimal pos", "5-variable k-map", "min terms", "minterm", "maxterm", "sop expression", "pos expression"],
+        "flipflop": ["flip-flop", "flipflop", "flip flop", "latch", "latches", "s-r flip", "j-k flip", "race around", "triggering levels", "master slave", "forbidden"],
+        "flip-flop": ["flip-flop", "flipflop", "flip flop", "latch", "latches", "s-r flip", "j-k flip", "race around", "triggering levels", "master slave", "forbidden"],
+        "counter": ["johnson counter", "jhonson counter", "down counter", "up counter", "synchronous counter", "ripple counter", "ring counter", "count- table", "mod-"],
+        "counters": ["johnson counter", "jhonson counter", "down counter", "up counter", "synchronous counter", "ripple counter", "ring counter", "count- table", "mod-"],
+        "register": ["shift register", "parallel-in serial-out", "serial-in", "piso", "sipo", "siso", "pipo", "right-shift register"],
+        "registers": ["shift register", "parallel-in serial-out", "serial-in", "piso", "sipo", "siso", "pipo", "right-shift register"],
+        "multiplexer": ["multiplexer", "mux", "demultiplexer", "demux", "encoder", "decoder", "8:1 mux", "4:1 mux", "multiplexer tree"],
+        "mux": ["multiplexer", "mux", "demultiplexer", "demux", "encoder", "decoder", "8:1 mux", "4:1 mux"],
+        "logic gates": ["universal gate", "universal gates", "nand gate", "nor gate", "logic functions from universal", "parity generator", "full adder", "half-adder", "totem pole ttl"],
+        "gates": ["universal gate", "universal gates", "nand gate", "nor gate", "logic gate"],
+        "logic families": ["totem pole", "ttl", "cmos", "logic families", "ttl circuit", "totem pole ttl"],
+        "number systems": ["2's complement", "1's complement", "gray code", "hexadecimal", "binary number", "decimal number system", "subtract ("],
+        "fourier transform": ["fourier series", "fourier transform", "discrete time fourier", "dtft", "dft", "fft", "frequency domain", "fourier"],
+        "signals": ["continuous-time signal", "discrete-time", "convolution", "x[n]", "h[n]", "lti system", "impulse delta", "delta(t)", "signals", "signal x(t)"],
+        "rlc": ["resistor, inductor and capacitor", "initial conditions as applicable to resistor", "di/dt", "dv/dt", "switch is closed at t=0", "transient", "impedance", "rlc"],
+        "resistor": ["resistor", "registor", "resistance", "ohm", "voltage divider"],
+        "registor": ["resistor", "registor", "resistance", "ohm", "voltage divider"],
         "thermodynamics": ["heat", "entropy", "carnot", "temperature", "kelvin", "isothermal", "adiabatic", "enthalpy", "thermal", "refrigeration"],
         "electromagnetism": ["magnetic", "flux", "maxwell", "electric", "gauss", "faraday", "induction", "charge", "lorentz", "solenoid", "dielectric"],
         "fluid dynamics": ["navier", "stokes", "bernoulli", "viscosity", "fluid", "reynolds", "laminar", "turbulent", "pipe", "flow", "boundary layer"],
         "quantum mechanics": ["photoelectric", "schrodinger", "wavefunction", "planck", "quantum", "heisenberg", "bohr", "photon", "compton", "tunneling"],
         "classical mechanics": ["newton", "momentum", "lagrangian", "hamiltonian", "torque", "inertia", "collision", "gravity", "friction", "kinematics"],
         "optics": ["lens", "refraction", "diffraction", "interference", "prism", "polarization", "focal", "laser", "mirror", "wavelength", "dispersion"],
-        "digital electronics": ["k-map", "boolean", "logic gate", "flip-flop", "multiplexer", "binary", "counter", "decoder", "karnaugh", "combinational"],
         "data structures": ["tree", "graph", "linked list", "stack", "queue", "binary search", "array", "hashing", "heap", "sorting", "algorithm"],
         "database management": ["sql", "acid", "relational", "normalization", "b-tree", "transaction", "schema", "foreign key", "er model", "deadlock"],
         "computer networks": ["tcp", "ip", "osi", "routing", "packet", "ethernet", "udp", "socket", "dns", "http", "subnet", "firewall"]
     }
-    for t in syllabus_topics:
-        t_key = t.strip().lower()
-        for syn_key, syn_words in topic_synonyms.items():
-            if syn_key in t_key or t_key in syn_key:
-                for word in syn_words:
-                    if re.search(r'\b' + re.escape(word) + r'\b', text_lower):
-                        return t
 
-    # 5. Partial match with previous topic
-    if current_topic:
-        for t in syllabus_topics:
-            if current_topic.lower() in t.lower() or t.lower() in current_topic.lower():
-                return t
+    matched_scores = {}
+    for topic in syllabus_topics:
+        t_clean = topic.strip().lower()
+        score = 0
 
-    # 6. Default fallback to first syllabus topic or General
-    return syllabus_topics[0] if syllabus_topics else "General"
+        # Exact substring match of topic name
+        if len(t_clean) >= 4 and t_clean in text_lower:
+            score += 20
+
+        # Keyword mapping rules
+        for rule_key, keywords in topic_rules.items():
+            if rule_key == t_clean or rule_key in t_clean or t_clean in rule_key:
+                for kw in keywords:
+                    if kw in text_lower:
+                        score += 15
+                        break
+
+        # Token overlap check (min 4 characters)
+        t_tokens = set(re.findall(r'\b[a-zA-Z]{4,}\b', t_clean))
+        q_tokens = set(re.findall(r'\b[a-zA-Z]{4,}\b', text_lower))
+        overlap = len(t_tokens.intersection(q_tokens))
+        if overlap > 0:
+            score += (overlap * 5)
+
+        if score > 0:
+            matched_scores[topic] = score
+
+    if matched_scores:
+        # Return topic with the highest score
+        return max(matched_scores.items(), key=lambda x: x[1])[0]
+
+    # If no syllabus topic matches with confidence, DO NOT force into first topic
+    return "General / Other"
 
 def remap_papers_to_syllabus(papers, syllabus):
-    if not papers or not syllabus:
+    if not papers:
         return
+
+    all_questions = []
     for paper in papers:
         for q in paper.get("questions", []):
-            new_t = match_topic_for_question(q.get("text", ""), syllabus, q.get("topic"))
-            q["topic"] = new_t
+            all_questions.append(q)
+
+    if not all_questions:
+        return
+
+    if not syllabus:
+        for q in all_questions:
+            q["topic"] = "General / Other"
+        save_store()
+        return
+
+    # 1. Try Gemini AI Batch Classification with strict precision
+    ai_success = False
+    if AI_AVAILABLE and client:
+        try:
+            q_list = "\n".join([f"{i+1}. {q.get('text', '')}" for i, q in enumerate(all_questions)])
+            prompt = f"""You are an academic exam syllabus classifier.
+We have an exam syllabus with these specific topics:
+{json.dumps(syllabus)}
+
+Classify EACH of the questions below.
+STRICT RULES:
+1. ONLY assign a question to a topic from the syllabus list if the question genuinely covers that topic or its direct sub-concepts.
+2. If a question is NOT about any of the listed syllabus topics (e.g. question is about K-Maps, Counters, or Fourier Transform, but the syllabus only has Flip-Flops and Resistors), you MUST label it as "General / Other".
+3. NEVER force an unrelated question into any syllabus topic.
+
+Questions:
+{q_list}
+
+Return ONLY a valid JSON array of strings containing the topic name or "General / Other" for each question in sequential order."""
+
+            models_to_try = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
+            for m in models_to_try:
+                try:
+                    resp = client.models.generate_content(
+                        model=m,
+                        contents=prompt,
+                        config={"response_mime_type": "application/json"}
+                    )
+                    assigned = json.loads(resp.text)
+                    if isinstance(assigned, list) and len(assigned) == len(all_questions):
+                        for idx, topic_name in enumerate(assigned):
+                            t_str = str(topic_name).strip()
+                            matched_s = next((s for s in syllabus if s.strip().lower() == t_str.lower()), None)
+                            all_questions[idx]["topic"] = matched_s if matched_s else ("General / Other" if t_str.lower() in ["general / other", "general", "other"] else match_topic_for_question(all_questions[idx].get("text", ""), syllabus))
+                        print("[AI] Successfully batch-remapped all questions with Gemini with strict precision!")
+                        ai_success = True
+                        break
+                except Exception as m_err:
+                    print(f"[AI WARN] {m} failed during remap: {m_err}")
+        except Exception as e:
+            print(f"[AI] Error during batch remap: {e}")
+
+    # 2. Fallback to precise rule-based matcher if AI was offline / quota limit
+    if not ai_success:
+        for q in all_questions:
+            q["topic"] = match_topic_for_question(q.get("text", ""), syllabus)
+
+    # Save changes to persistent store
+    save_store()
 
 def compute_statistics(papers, syllabus=None):
     stats = defaultdict(lambda: {"marks": 0, "frequency": 0, "types": defaultdict(int)})
@@ -146,18 +241,22 @@ def compute_statistics(papers, syllabus=None):
     # Convert inner defaultdicts to regular dicts
     return {k: {**v, "types": dict(v["types"])} for k, v in stats.items()}
 
-def generate_priorities(stats):
+def generate_priorities(stats, syllabus=None):
     priorities = []
+    syllabus_lower = [s.strip().lower() for s in (syllabus or [])]
     for topic, data in stats.items():
+        is_syllabus = topic.lower() in syllabus_lower
         score = data["marks"] + (data["frequency"] * 5)
         priorities.append({
-            "topic":     topic,
-            "score":     score,
-            "marks":     data["marks"],
-            "frequency": data["frequency"],
-            "types":     data["types"]
+            "topic":       topic,
+            "score":       score,
+            "marks":       data["marks"],
+            "frequency":   data["frequency"],
+            "types":       data["types"],
+            "is_syllabus": is_syllabus
         })
-    priorities.sort(key=lambda x: x["score"], reverse=True)
+    # Syllabus topics ranked first by score, then other/unassigned topics
+    priorities.sort(key=lambda x: (1 if x["is_syllabus"] else 0, x["score"]), reverse=True)
     return priorities
 
 # ── Mock extraction (used when AI unavailable or for demo) ────────────────────
@@ -199,7 +298,7 @@ Return structured JSON."""
 
     image_part = {"inline_data": {"data": base64.b64encode(image_bytes).decode(), "mime_type": mime}}
 
-    models_to_try = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+    models_to_try = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
     response = None
     last_err = None
 
@@ -248,6 +347,7 @@ def syllabus():
         # Immediately re-map all questions in uploaded papers to current syllabus!
         if store["papers"] and store["syllabus"]:
             remap_papers_to_syllabus(store["papers"], store["syllabus"])
+        save_store()
         return jsonify({
             "ok": True,
             "syllabus": store["syllabus"],
@@ -255,14 +355,16 @@ def syllabus():
         })
     if request.method == "DELETE":
         store["syllabus"] = []
+        save_store()
         return jsonify({"ok": True})
 
 @app.route("/api/papers/remap", methods=["POST"])
 def remap_papers():
     if not store["papers"]:
-        return jsonify({"error": "No papers uploaded yet"}), 400
+        return jsonify({"ok": True, "message": "No papers uploaded yet", "papers_remapped": 0})
     remap_papers_to_syllabus(store["papers"], store["syllabus"])
-    return jsonify({"ok": True, "message": f"Remapped {len(store['papers'])} paper(s) to current syllabus"})
+    save_store()
+    return jsonify({"ok": True, "message": f"Remapped {len(store['papers'])} paper(s) to current syllabus", "papers_remapped": len(store["papers"])})
 
 @app.route("/api/questions/update-topic", methods=["POST"])
 def update_question_topic():
@@ -279,6 +381,7 @@ def update_question_topic():
             paper["questions"][q_idx]["topic"] = new_topic
             if new_topic not in store["syllabus"]:
                 store["syllabus"].append(new_topic)
+            save_store()
             return jsonify({"ok": True, "syllabus": store["syllabus"]})
     return jsonify({"error": "Question not found"}), 404
 
@@ -303,6 +406,7 @@ def upload():
         if store["syllabus"]:
             remap_papers_to_syllabus([paper], store["syllabus"])
         store["papers"].append(paper)
+        save_store()
         return jsonify({"ok": True, "paper": paper, "mock": True})
 
     # Save file
@@ -317,6 +421,7 @@ def upload():
         if store["syllabus"]:
             remap_papers_to_syllabus([paper], store["syllabus"])
         store["papers"].append(paper)
+        save_store()
         return jsonify({"ok": True, "paper": paper})
     except Exception as e:
         return jsonify({"error": str(e), "hint": "Set GEMINI_API_KEY env variable or use Demo mode"}), 500
@@ -327,6 +432,7 @@ def papers():
         return jsonify(store["papers"])
     if request.method == "DELETE":
         store["papers"] = []
+        save_store()
         return jsonify({"ok": True})
 
 @app.route("/api/analysis")
@@ -334,9 +440,11 @@ def analysis():
     if not store["papers"]:
         return jsonify({"error": "No papers uploaded yet"}), 400
     stats      = compute_statistics(store["papers"], store["syllabus"])
-    priorities = generate_priorities(stats)
+    priorities = generate_priorities(stats, store["syllabus"])
     total_qs   = sum(len(p.get("questions", [])) for p in store["papers"])
     total_marks = sum(q.get("marks", 0) for p in store["papers"] for q in p.get("questions", []))
+    syllabus_lower = [s.strip().lower() for s in store["syllabus"]]
+    topics_covered = sum(1 for k, v in stats.items() if k.lower() in syllabus_lower and v["frequency"] > 0)
     return jsonify({
         "stats":      stats,
         "priorities": priorities,
@@ -344,7 +452,7 @@ def analysis():
             "total_papers": len(store["papers"]),
             "total_questions": total_qs,
             "total_marks": total_marks,
-            "topics_covered": sum(1 for v in stats.values() if v["frequency"] > 0),
+            "topics_covered": topics_covered,
             "syllabus_total": len(store["syllabus"])
         }
     })

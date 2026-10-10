@@ -122,12 +122,10 @@ async function saveSyllabus(showToast = false) {
       body: JSON.stringify({ topics: syllabus })
     });
 
-    // If papers are already loaded, immediately refresh analysis and re-map
-    if (allPapers.length > 0) {
-      await refreshAnalysis();
-      if (showToast) {
-        toast(`Syllabus synced! Existing papers automatically updated with new topic(s).`, 'success');
-      }
+    // Immediately refresh analysis so all papers and priority tables re-evaluate
+    await refreshAnalysis();
+    if (showToast) {
+      toast(`Syllabus synced! Existing papers automatically updated with new topic(s).`, 'success');
     }
   } catch (e) {
     console.error('Failed to save syllabus:', e);
@@ -558,15 +556,20 @@ function populateFilters(priorities) {
 function renderQuestions() {
   const filterTopic = document.getElementById('filter-topic')?.value || '';
   const filterType = document.getElementById('filter-type')?.value || '';
+  const filterSearch = (document.getElementById('filter-search')?.value || '').trim().toLowerCase();
 
   const allQs = allPapers.flatMap((p, paperIdx) =>
     (p.questions || []).map((q, questionIdx) => ({ ...q, year: p.year, paperIdx, questionIdx }))
   );
 
-  const filtered = allQs.filter(q =>
-    (!filterTopic || q.topic === filterTopic) &&
-    (!filterType || q.question_type === filterType)
-  );
+  const filtered = allQs.filter(q => {
+    const matchesTopic = !filterTopic || (q.topic || '').toLowerCase() === filterTopic.toLowerCase();
+    const matchesType = !filterType || q.question_type === filterType;
+    const matchesSearch = !filterSearch ||
+      (q.text || '').toLowerCase().includes(filterSearch) ||
+      (q.topic || '').toLowerCase().includes(filterSearch);
+    return matchesTopic && matchesType && matchesSearch;
+  });
 
   const container = document.getElementById('questions-list');
   if (!container) return;
