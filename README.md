@@ -9,7 +9,7 @@ Designed for university students, educators, and curriculum developers to pinpoi
 ## 🌟 Key Features
 
 ### 1. 👁️ Multimodal Question Paper Extraction
-- Accepts scanned exam paper images (`PNG`, `JPG`) and `PDF` documents.
+- Accepts scanned exam paper photos and images (`PNG`, `JPG`). (*Multi-page PDF extraction is Coming Soon*).
 - Uses **Google Gemini Vision (`gemini-3.5-flash` / `gemini-3.8-flash`)** to extract full question text, marks distribution, and question classification (`theory`, `numerical`, `derivation`).
 - Built-in **Sample Test Mode (Mock)** for testing offline or without an API key.
 

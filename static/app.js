@@ -174,6 +174,13 @@ function loadDefaultSyllabus() {
 // ── File Selection & Drag-and-Drop ────────────────────────────
 function handleFile(file) {
   if (!file) return;
+
+  if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+    toast('PDF upload is coming soon! Please upload PNG or JPG exam paper photos for now.', 'info');
+    clearSelectedFile();
+    return;
+  }
+
   currentFile = file;
 
   const preview = document.getElementById('file-preview');
@@ -211,7 +218,7 @@ function handleDrop(e) {
 // ── Upload Paper Execution ────────────────────────────────────
 async function uploadPaper() {
   if (!currentFile) {
-    toast('Please select an exam paper image or PDF first.', 'error');
+    toast('Please select an exam paper image (PNG or JPG) first.', 'error');
     return;
   }
 

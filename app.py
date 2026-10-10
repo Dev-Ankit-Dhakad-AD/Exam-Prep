@@ -391,6 +391,9 @@ def upload():
         return jsonify({"error": "No file uploaded"}), 400
 
     f    = request.files["file"]
+    if f.filename.lower().endswith(".pdf"):
+        return jsonify({"error": "PDF upload is coming soon! Please upload PNG or JPG exam paper photos for now."}), 400
+
     year = int(request.form.get("year", 2024))
     use_mock = request.form.get("mock", "false").lower() == "true"
 
