@@ -55,9 +55,86 @@ store = {
     "syllabus": []
 }
 
+import re
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def compute_statistics(papers):
+def match_topic_for_question(text, syllabus_topics, current_topic=None):
+    if not syllabus_topics:
+        return current_topic or "General"
+
+    # 1. Exact or case-insensitive match with existing topic if still in syllabus
+    for t in syllabus_topics:
+        if current_topic and current_topic.strip().lower() == t.strip().lower():
+            return t
+
+    text_lower = (text or "").lower()
+
+    # 2. Substring match of full topic name in question text (longest match first)
+    sorted_topics = sorted(syllabus_topics, key=lambda x: len(x), reverse=True)
+    for t in sorted_topics:
+        t_clean = t.strip().lower()
+        if len(t_clean) >= 3 and t_clean in text_lower:
+            return t
+
+    # 3. Token / keyword overlap
+    q_tokens = set(re.findall(r'\b[a-zA-Z]{3,}\b', text_lower))
+    best_topic = None
+    best_overlap = 0
+    for t in syllabus_topics:
+        t_tokens = set(re.findall(r'\b[a-zA-Z]{3,}\b', t.lower()))
+        overlap = len(q_tokens.intersection(t_tokens))
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_topic = t
+    if best_topic and best_overlap > 0:
+        return best_topic
+
+    # 4. Domain synonyms for engineering / sciences
+    topic_synonyms = {
+        "thermodynamics": ["heat", "entropy", "carnot", "temperature", "kelvin", "isothermal", "adiabatic", "enthalpy", "thermal", "refrigeration"],
+        "electromagnetism": ["magnetic", "flux", "maxwell", "electric", "gauss", "faraday", "induction", "charge", "lorentz", "solenoid", "dielectric"],
+        "fluid dynamics": ["navier", "stokes", "bernoulli", "viscosity", "fluid", "reynolds", "laminar", "turbulent", "pipe", "flow", "boundary layer"],
+        "quantum mechanics": ["photoelectric", "schrodinger", "wavefunction", "planck", "quantum", "heisenberg", "bohr", "photon", "compton", "tunneling"],
+        "classical mechanics": ["newton", "momentum", "lagrangian", "hamiltonian", "torque", "inertia", "collision", "gravity", "friction", "kinematics"],
+        "optics": ["lens", "refraction", "diffraction", "interference", "prism", "polarization", "focal", "laser", "mirror", "wavelength", "dispersion"],
+        "digital electronics": ["k-map", "boolean", "logic gate", "flip-flop", "multiplexer", "binary", "counter", "decoder", "karnaugh", "combinational"],
+        "data structures": ["tree", "graph", "linked list", "stack", "queue", "binary search", "array", "hashing", "heap", "sorting", "algorithm"],
+        "database management": ["sql", "acid", "relational", "normalization", "b-tree", "transaction", "schema", "foreign key", "er model", "deadlock"],
+        "computer networks": ["tcp", "ip", "osi", "routing", "packet", "ethernet", "udp", "socket", "dns", "http", "subnet", "firewall"]
+    }
+    for t in syllabus_topics:
+        t_key = t.strip().lower()
+        for syn_key, syn_words in topic_synonyms.items():
+            if syn_key in t_key or t_key in syn_key:
+                for word in syn_words:
+                    if re.search(r'\b' + re.escape(word) + r'\b', text_lower):
+                        return t
+
+    # 5. Partial match with previous topic
+    if current_topic:
+        for t in syllabus_topics:
+            if current_topic.lower() in t.lower() or t.lower() in current_topic.lower():
+                return t
+
+    # 6. Default fallback to first syllabus topic or General
+    return syllabus_topics[0] if syllabus_topics else "General"
+
+def remap_papers_to_syllabus(papers, syllabus):
+    if not papers or not syllabus:
+        return
+    for paper in papers:
+        for q in paper.get("questions", []):
+            new_t = match_topic_for_question(q.get("text", ""), syllabus, q.get("topic"))
+            q["topic"] = new_t
+
+def compute_statistics(papers, syllabus=None):
     stats = defaultdict(lambda: {"marks": 0, "frequency": 0, "types": defaultdict(int)})
+    # Pre-seed with all current syllabus topics so 0-frequency topics show up
+    if syllabus:
+        for t in syllabus:
+            if t.strip():
+                _ = stats[t.strip()]
+
     for paper in papers:
         for q in paper.get("questions", []):
             topic = q.get("topic")
@@ -165,13 +242,45 @@ def syllabus():
     if request.method == "GET":
         return jsonify(store["syllabus"])
     if request.method == "POST":
-        data = request.json
+        data = request.json or {}
         topics = data.get("topics", [])
         store["syllabus"] = [t.strip() for t in topics if t.strip()]
-        return jsonify({"ok": True, "syllabus": store["syllabus"]})
+        # Immediately re-map all questions in uploaded papers to current syllabus!
+        if store["papers"] and store["syllabus"]:
+            remap_papers_to_syllabus(store["papers"], store["syllabus"])
+        return jsonify({
+            "ok": True,
+            "syllabus": store["syllabus"],
+            "papers_remapped": len(store["papers"])
+        })
     if request.method == "DELETE":
         store["syllabus"] = []
         return jsonify({"ok": True})
+
+@app.route("/api/papers/remap", methods=["POST"])
+def remap_papers():
+    if not store["papers"]:
+        return jsonify({"error": "No papers uploaded yet"}), 400
+    remap_papers_to_syllabus(store["papers"], store["syllabus"])
+    return jsonify({"ok": True, "message": f"Remapped {len(store['papers'])} paper(s) to current syllabus"})
+
+@app.route("/api/questions/update-topic", methods=["POST"])
+def update_question_topic():
+    data = request.json or {}
+    paper_idx = int(data.get("paper_idx", 0))
+    q_idx = int(data.get("question_idx", 0))
+    new_topic = data.get("topic", "").strip()
+    if not new_topic:
+        return jsonify({"error": "Topic required"}), 400
+
+    if 0 <= paper_idx < len(store["papers"]):
+        paper = store["papers"][paper_idx]
+        if 0 <= q_idx < len(paper.get("questions", [])):
+            paper["questions"][q_idx]["topic"] = new_topic
+            if new_topic not in store["syllabus"]:
+                store["syllabus"].append(new_topic)
+            return jsonify({"ok": True, "syllabus": store["syllabus"]})
+    return jsonify({"error": "Question not found"}), 404
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
@@ -191,6 +300,8 @@ def upload():
         questions = [dict(q) for q in MOCK_QUESTIONS]
         random.shuffle(questions)
         paper = {"year": year, "questions": questions, "filename": f.filename, "mock": True}
+        if store["syllabus"]:
+            remap_papers_to_syllabus([paper], store["syllabus"])
         store["papers"].append(paper)
         return jsonify({"ok": True, "paper": paper, "mock": True})
 
@@ -203,6 +314,8 @@ def upload():
         paper = ai_extract(filepath, year, store["syllabus"])
         paper["filename"] = f.filename
         paper["mock"] = False
+        if store["syllabus"]:
+            remap_papers_to_syllabus([paper], store["syllabus"])
         store["papers"].append(paper)
         return jsonify({"ok": True, "paper": paper})
     except Exception as e:
@@ -220,7 +333,7 @@ def papers():
 def analysis():
     if not store["papers"]:
         return jsonify({"error": "No papers uploaded yet"}), 400
-    stats      = compute_statistics(store["papers"])
+    stats      = compute_statistics(store["papers"], store["syllabus"])
     priorities = generate_priorities(stats)
     total_qs   = sum(len(p.get("questions", [])) for p in store["papers"])
     total_marks = sum(q.get("marks", 0) for p in store["papers"] for q in p.get("questions", []))
@@ -231,7 +344,8 @@ def analysis():
             "total_papers": len(store["papers"]),
             "total_questions": total_qs,
             "total_marks": total_marks,
-            "topics_covered": len(stats),
+            "topics_covered": sum(1 for v in stats.values() if v["frequency"] > 0),
+            "syllabus_total": len(store["syllabus"])
         }
     })
 

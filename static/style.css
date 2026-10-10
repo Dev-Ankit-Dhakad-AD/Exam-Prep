@@ -973,14 +973,15 @@ body::before {
   border: 1px solid var(--border);
 }
 
-/* ── App Footer ───────────────────────────────────────────── */
+/* ── Rich Application Footer ──────────────────────────────── */
 .app-footer {
   background: #ffffff;
   border-top: 1.5px solid var(--border);
-  padding: 24px 0;
-  margin-top: 50px;
+  padding: 56px 0 28px;
+  margin-top: 70px;
   position: relative;
   z-index: 1;
+  box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.02);
 }
 
 .footer-container {
@@ -988,29 +989,144 @@ body::before {
   margin: 0 auto;
   padding: 0 24px;
   display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1.2fr 1.4fr;
+  gap: 36px;
+}
+
+.footer-col-brand {
+  padding-right: 18px;
+}
+
+.footer-desc {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.footer-inst-badge {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  font-size: 14px;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-elev);
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-headings);
+  line-height: 1.4;
+}
+
+.footer-heading {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-headings);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 16px;
+}
+
+.footer-links {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footer-links a {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  text-decoration: none;
   font-weight: 500;
+  transition: color 0.15s ease, transform 0.15s ease;
+  display: inline-block;
+}
+
+.footer-links a:hover {
+  color: var(--primary-accent);
+  transform: translateX(3px);
+}
+
+.footer-tech-tag {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.footer-tech-tag::before {
+  content: '•';
+  color: var(--primary-accent);
+  font-size: 14px;
+}
+
+.footer-author-text {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.footer-github-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #0a192f;
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(10, 25, 47, 0.15);
+  transition: all 0.2s ease;
+}
+
+.footer-github-btn:hover {
+  background: #172d4f;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(10, 25, 47, 0.25);
+  color: #ffffff;
+}
+
+.footer-system-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 
-.footer-author-link {
-  color: var(--text-headings);
-  text-decoration: none;
-  font-weight: 700;
-  padding: 4px 12px;
-  border-radius: var(--radius-pill);
-  background: #f1f5f9;
-  border: 1.5px solid var(--border);
-  transition: all 0.15s ease;
-  margin-left: 6px;
+.footer-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
 }
 
-.footer-author-link:hover {
-  background: var(--primary-subtle);
-  color: var(--primary-accent);
-  border-color: var(--primary-border);
+.footer-copy {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.footer-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* ── Toast Notifications ──────────────────────────────────── */
@@ -1194,6 +1310,12 @@ body::before {
 
   .question-card {
     padding: 14px 16px;
+  }
+
+  /* Responsive Footer */
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
   }
 }
 
@@ -1398,16 +1520,24 @@ body::before {
 
   /* Footer */
   .app-footer {
-    padding: 18px 0;
-    margin-top: 30px;
+    padding: 36px 0 20px;
+    margin-top: 40px;
   }
 
   .footer-container {
-    font-size: 12.5px;
-    padding: 0 12px;
-    text-align: center;
+    padding: 0 14px;
+    gap: 24px;
+  }
+
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .footer-bottom-bar {
     flex-direction: column;
-    gap: 6px;
+    align-items: flex-start;
+    gap: 12px;
   }
 }
 

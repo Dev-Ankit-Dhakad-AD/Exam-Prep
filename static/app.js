@@ -75,20 +75,24 @@ function addTopic() {
   syllabus.push(val);
   inp.value = '';
   renderTopics();
-  saveSyllabus();
+  saveSyllabus(true);
 }
 
 function removeTopic(topic) {
   syllabus = syllabus.filter(t => t !== topic);
   renderTopics();
-  saveSyllabus();
+  saveSyllabus(true);
 }
 
 function renderTopics() {
   const list = document.getElementById('topic-list');
   const countEl = document.getElementById('topics-count');
+  const syncBtn = document.getElementById('sync-papers-btn');
 
   if (countEl) countEl.textContent = `${syllabus.length} Topics`;
+  if (syncBtn) {
+    syncBtn.style.display = allPapers.length > 0 ? 'inline-flex' : 'none';
+  }
 
   if (!syllabus.length) {
     list.innerHTML = '<span class="topic-chip-empty">No syllabus topics added yet. Add above or click "Load Sample Syllabus".</span>';
@@ -110,15 +114,37 @@ function renderTopics() {
   }).join('');
 }
 
-async function saveSyllabus() {
+async function saveSyllabus(showToast = false) {
   try {
     await api('/syllabus', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topics: syllabus })
     });
+
+    // If papers are already loaded, immediately refresh analysis and re-map
+    if (allPapers.length > 0) {
+      await refreshAnalysis();
+      if (showToast) {
+        toast(`Syllabus synced! Existing papers automatically updated with new topic(s).`, 'success');
+      }
+    }
   } catch (e) {
     console.error('Failed to save syllabus:', e);
+  }
+}
+
+async function syncSyllabusWithPapers() {
+  if (!allPapers.length) {
+    toast('No uploaded papers found yet.', 'info');
+    return;
+  }
+  try {
+    await api('/papers/remap', { method: 'POST' });
+    await refreshAnalysis();
+    toast(`Successfully re-synced ${allPapers.length} paper(s) with ${syllabus.length} syllabus topics!`, 'success');
+  } catch (e) {
+    toast('Failed to re-sync papers: ' + e.message, 'error');
   }
 }
 
@@ -127,6 +153,9 @@ async function clearSyllabus() {
   syllabus = [];
   renderTopics();
   await api('/syllabus', { method: 'DELETE' });
+  if (allPapers.length > 0) {
+    await refreshAnalysis();
+  }
   toast('Syllabus topics cleared.', 'info');
 }
 
@@ -141,8 +170,7 @@ function loadDefaultSyllabus() {
   ];
   syllabus = [...new Set([...syllabus, ...sampleTopics])];
   renderTopics();
-  saveSyllabus();
-  toast('Sample syllabus topics loaded.', 'success');
+  saveSyllabus(true);
 }
 
 // ── File Selection & Drag-and-Drop ────────────────────────────
@@ -531,8 +559,8 @@ function renderQuestions() {
   const filterTopic = document.getElementById('filter-topic')?.value || '';
   const filterType = document.getElementById('filter-type')?.value || '';
 
-  const allQs = allPapers.flatMap(p =>
-    (p.questions || []).map(q => ({ ...q, year: p.year }))
+  const allQs = allPapers.flatMap((p, paperIdx) =>
+    (p.questions || []).map((q, questionIdx) => ({ ...q, year: p.year, paperIdx, questionIdx }))
   );
 
   const filtered = allQs.filter(q =>
@@ -551,6 +579,14 @@ function renderQuestions() {
   container.innerHTML = filtered.map(q => {
     const typeCls = q.question_type === 'theory' ? 'type-theory' : q.question_type === 'numerical' ? 'type-numerical' : 'type-derivation';
 
+    const currentTopic = q.topic || '';
+    // Build options list with current syllabus topics
+    const optionsHtml = syllabus.map(s => `
+      <option value="${escapeHtml(s)}" ${s.toLowerCase() === currentTopic.toLowerCase() ? 'selected' : ''}>
+        ${escapeHtml(s)}
+      </option>
+    `).join('');
+
     return `
       <div class="question-card">
         <div class="question-card-top">
@@ -559,11 +595,36 @@ function renderQuestions() {
         </div>
         <div class="question-card-meta">
           <span class="type-pill ${typeCls}">${escapeHtml(q.question_type)}</span>
-          ${q.topic ? `<span class="meta-tag">Topic: ${escapeHtml(q.topic)}</span>` : ''}
           <span class="meta-tag">Exam Year: ${q.year}</span>
+          <div style="display:inline-flex; align-items:center; gap:6px; margin-left:auto; flex-wrap:wrap;">
+            <span style="font-size:11px; font-weight:700; color:var(--text-muted);">Topic:</span>
+            <select class="select-input" onchange="changeQuestionTopic(${q.paperIdx}, ${q.questionIdx}, this.value)" style="padding:2px 8px; font-size:11.5px; height:28px; width:auto; border-radius:var(--radius-pill); background:var(--bg-subtle); border-color:var(--border);">
+              ${optionsHtml}
+              ${!syllabus.includes(currentTopic) && currentTopic ? `<option value="${escapeHtml(currentTopic)}" selected>${escapeHtml(currentTopic)}</option>` : ''}
+            </select>
+          </div>
         </div>
       </div>`;
   }).join('');
+}
+
+async function changeQuestionTopic(paperIdx, questionIdx, newTopic) {
+  if (!newTopic) return;
+  try {
+    await api('/questions/update-topic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paper_idx: paperIdx, question_idx: questionIdx, topic: newTopic })
+    });
+    // Update local state and re-render dashboard
+    if (allPapers[paperIdx]?.questions?.[questionIdx]) {
+      allPapers[paperIdx].questions[questionIdx].topic = newTopic;
+    }
+    await refreshAnalysis();
+    toast(`Question re-mapped to "${newTopic}".`, 'success');
+  } catch (e) {
+    toast('Failed to change question topic: ' + e.message, 'error');
+  }
 }
 
 // ── Clean Toast Notifications ──────────────────────────────────
